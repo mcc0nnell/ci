@@ -7,6 +7,7 @@ import { runId } from './run-id';
 
 type WorkflowEnv<TParams> = { CI_WORKFLOW: Workflow<TParams> };
 type RestartWorkflowEnv = Pick<Bindings, 'CI_WORKFLOW'>;
+type TerminateWorkflowEnv = Pick<Bindings, 'CI_WORKFLOW'>;
 
 /**
  * Starts a Workflow with a deterministic source-based ID.
@@ -25,5 +26,19 @@ export async function startCiRun<TParams extends CiParams>(
 export async function restartCiRun(env: RestartWorkflowEnv, source: CiSource) {
   const instance = await env.CI_WORKFLOW.get(await runId(source));
   await instance.restart();
+  return instance.id;
+}
+
+/**
+ * Terminates the Workflow identified by the source commit.
+ *
+ * This is intentionally only a lifecycle primitive. Deciding which run is
+ * superseded belongs to the application because that decision requires a
+ * coordination store with ordering/atomicity guarantees appropriate to the
+ * provider and trigger model.
+ */
+export async function terminateCiRun(env: TerminateWorkflowEnv, source: CiSource) {
+  const instance = await env.CI_WORKFLOW.get(await runId(source));
+  await instance.terminate();
   return instance.id;
 }
