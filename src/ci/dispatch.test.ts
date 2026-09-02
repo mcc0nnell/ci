@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fromPartial } from '@total-typescript/shoehorn';
-import { restartCiRun, startCiRun } from './dispatch';
+import { restartCiRun, startCiRun, terminateCiRun } from './dispatch';
 import { runId } from './run-id';
 import type { Bindings } from '../env';
 import type { CiParams, CloudflareArtifacts } from '../pipeline';
@@ -54,6 +54,28 @@ describe('static CI workflow dispatch', () => {
     });
 
     await expect(restartCiRun(workflowEnv({ get }), params)).rejects.toBe(
+      error
+    );
+  });
+
+  it('terminates the exact source workflow instance', async () => {
+    const id = await runId(params);
+    const terminate = vi.fn().mockResolvedValue(undefined);
+    const get = vi.fn().mockResolvedValue({ id, terminate });
+
+    await expect(terminateCiRun(workflowEnv({ get }), params)).resolves.toBe(id);
+    expect(get).toHaveBeenCalledWith(id);
+    expect(terminate).toHaveBeenCalledOnce();
+  });
+
+  it('propagates workflow termination failures', async () => {
+    const error = new Error('termination unavailable');
+    const get = vi.fn().mockResolvedValue({
+      id: await runId(params),
+      terminate: vi.fn().mockRejectedValue(error),
+    });
+
+    await expect(terminateCiRun(workflowEnv({ get }), params)).rejects.toBe(
       error
     );
   });
