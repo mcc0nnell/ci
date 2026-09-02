@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 export { CiSandbox } from './ci/sandbox';
-export { restartCiRun, startCiRun } from './ci/dispatch';
+export { restartCiRun, startCiRun, terminateCiRun } from './ci/dispatch';
+export { refRunScopeId } from './ci/run-id';
 export type {
   CreatePullRequestResult,
   SourceControlCheckout,
