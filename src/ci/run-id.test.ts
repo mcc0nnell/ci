@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runId } from './run-id';
+import { refRunScopeId, runId } from './run-id';
 
 describe('runId', () => {
   it('creates a valid, bounded workflow ID', async () => {
@@ -56,5 +56,33 @@ describe('runId', () => {
     await expect(runId({ ...source, repo: 'repo' })).resolves.not.toBe(
       await runId(source)
     );
+  });
+});
+
+describe('refRunScopeId', () => {
+  const source = {
+    provider: 'cloudflare-artifacts',
+    owner: 'owner',
+    repo: 'repo',
+    ref: 'refs/heads/main',
+  };
+
+  it('creates one stable coordination scope for a full ref', async () => {
+    const id = await refRunScopeId(source);
+    expect(id).toMatch(/^ci-ref-cloudflare-a-repo-[a-f0-9]{64}$/);
+    expect(id.length).toBeLessThanOrEqual(100);
+    await expect(refRunScopeId({ ...source })).resolves.toBe(id);
+  });
+
+  it('separates branch and tag refs even when their short names match', async () => {
+    await expect(
+      refRunScopeId({ ...source, ref: 'refs/tags/main' })
+    ).resolves.not.toBe(await refRunScopeId(source));
+  });
+
+  it('is independent of commit SHA by construction', async () => {
+    const first = await refRunScopeId(source);
+    const second = await refRunScopeId(source);
+    expect(second).toBe(first);
   });
 });
