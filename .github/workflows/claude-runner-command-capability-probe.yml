@@ -1,0 +1,123 @@
+name: Claude runner file-command capability probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - lab/anthropic-bun-options-repro
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install subprocess isolation dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap socat
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
+      - name: Install Claude Code 2.1.278
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/cc-probe"
+          npm install --prefix "$RUNNER_TEMP/cc-probe" @anthropic-ai/claude-code@2.1.278
+
+      - name: Prepare benign file-command probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/probe-bin"
+          cat > "$RUNNER_TEMP/probe-bin/runner_probe_cmd" <<'SH'
+          #!/usr/bin/env bash
+          echo RUNNER_PATH_PROBE_OK
+          SH
+          chmod +x "$RUNNER_TEMP/probe-bin/runner_probe_cmd"
+
+          cat > "$RUNNER_TEMP/runner-command-hook.sh" <<'SH'
+          #!/usr/bin/env bash
+          set -u
+          {
+            printf 'GITHUB_ENV=%s\n' "${GITHUB_ENV:+present}"
+            printf 'GITHUB_OUTPUT=%s\n' "${GITHUB_OUTPUT:+present}"
+            printf 'GITHUB_PATH=%s\n' "${GITHUB_PATH:+present}"
+            printf 'GITHUB_STATE=%s\n' "${GITHUB_STATE:+present}"
+            printf 'GITHUB_STEP_SUMMARY=%s\n' "${GITHUB_STEP_SUMMARY:+present}"
+            printf 'ANTHROPIC_API_KEY=%s\n' "${ANTHROPIC_API_KEY:+present}"
+            printf 'SCRUB=%s\n' "${CLAUDE_CODE_SUBPROCESS_ENV_SCRUB:-}"
+          } > "$RUNNER_TEMP/runner-command-probe.txt"
+
+          [ -z "${ANTHROPIC_API_KEY:-}" ] || exit 90
+
+          if [ -n "${GITHUB_OUTPUT:-}" ]; then
+            echo "scrub_child_output=forged_by_scrubbed_subprocess" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "${GITHUB_PATH:-}" ]; then
+            echo "$RUNNER_TEMP/probe-bin" >> "$GITHUB_PATH"
+          fi
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            echo "RUNNER_STEP_SUMMARY_PROBE" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit 0
+          SH
+          chmod +x "$RUNNER_TEMP/runner-command-hook.sh"
+
+          python3 - <<'PY'
+          import json, os
+          settings = {
+              "hooks": {
+                  "SessionStart": [{
+                      "hooks": [{
+                          "type": "command",
+                          "command": os.path.join(os.environ["RUNNER_TEMP"], "runner-command-hook.sh"),
+                          "timeout": 10
+                      }]
+                  }]
+              }
+          }
+          with open(os.path.join(os.environ["RUNNER_TEMP"], "runner-command-settings.json"), "w", encoding="utf-8") as f:
+              json.dump(settings, f)
+          PY
+
+      - name: Launch real scrubbed Claude subprocess
+        id: claude_probe
+        shell: bash
+        env:
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
+          ANTHROPIC_API_KEY: sk-ant-api03-DUMMY_RESEARCH_ONLY
+        run: |
+          set +e
+          timeout 8s "$RUNNER_TEMP/cc-probe/node_modules/.bin/claude" \
+            -p "Reply only with OK." \
+            --settings "$RUNNER_TEMP/runner-command-settings.json" \
+            --output-format text
+          echo "claude_exit=$?"
+          exit 0
+
+      - name: Assert output and PATH mutation
+        shell: bash
+        env:
+          FORGED_OUTPUT: ${{ steps.claude_probe.outputs.scrub_child_output }}
+        run: |
+          set -euo pipefail
+          cat "$RUNNER_TEMP/runner-command-probe.txt"
+          test "$FORGED_OUTPUT" = "forged_by_scrubbed_subprocess"
+          test "$(runner_probe_cmd)" = "RUNNER_PATH_PROBE_OK"
+          grep -qx 'GITHUB_OUTPUT=present' "$RUNNER_TEMP/runner-command-probe.txt"
+          grep -qx 'GITHUB_PATH=present' "$RUNNER_TEMP/runner-command-probe.txt"
+          grep -qx 'ANTHROPIC_API_KEY=' "$RUNNER_TEMP/runner-command-probe.txt"
+          grep -qx 'SCRUB=1' "$RUNNER_TEMP/runner-command-probe.txt"
+          echo "PASS: scrubbed Claude subprocess can mutate GITHUB_OUTPUT and GITHUB_PATH in addition to GITHUB_ENV."
+
+      - name: Upload probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-runner-file-command-capability-probe
+          path: ${{ runner.temp }}/runner-command-probe.txt
