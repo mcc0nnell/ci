@@ -1,0 +1,25 @@
+name: Mercurial skeleton probe
+on:
+  push:
+    branches:
+      - lab/anthropic-bun-options-repro
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect hg init metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          hg --version | head -1
+          rm -rf "$RUNNER_TEMP/hg-skeleton"
+          hg init "$RUNNER_TEMP/hg-skeleton"
+          cd "$RUNNER_TEMP/hg-skeleton"
+          find .hg -maxdepth 3 -type f -print0 | sort -z | while IFS= read -r -d '' f; do
+            printf 'FILE %s\n' "$f"
+            base64 -w0 "$f"
+            printf '\nEND %s\n' "$f"
+          done
