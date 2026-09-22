@@ -1,0 +1,23 @@
+name: Git-tracked Mercurial hgrc probe
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - lab/anthropic-bun-options-repro
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Execute harmless hg status
+        shell: bash
+        run: |
+          set +e
+          hg --cwd "$GITHUB_WORKSPACE/repro/tracked-hg" status
+          rc=$?
+          echo "hg_exit=$rc"
+          test -f "$RUNNER_TEMP/tracked-hgrc-loaded.txt"
+          grep -qx 'git-tracked-hgrc-extension-loaded' "$RUNNER_TEMP/tracked-hgrc-loaded.txt"
+          echo "PASS: Git-tracked .hg/hgrc loaded repo-local extension during hg status."
