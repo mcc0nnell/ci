@@ -13,6 +13,16 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
+      - name: Install subprocess isolation dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap socat
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
       - name: Install Claude Code 2.1.278
         shell: bash
         run: |
