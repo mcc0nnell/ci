@@ -1,2 +1,2 @@
 [extensions]
-repro = ../hg-extension.py
+trackedprobe = .hg/hgext.py
