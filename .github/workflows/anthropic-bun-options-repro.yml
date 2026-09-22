@@ -31,7 +31,7 @@ jobs:
       - name: Emulate persistence from untrusted execution
         shell: bash
         run: |
-          echo "BUN_OPTIONS=--preload $GITHUB_WORKSPACE/repro/preload.ts" >> "$GITHUB_ENV"
+          echo "BUN_OPTIONS=--preload=$GITHUB_WORKSPACE/repro/preload.ts" >> "$GITHUB_ENV"
 
       - name: Run claude-code-action post-step sanitizer verbatim
         shell: /bin/bash --noprofile --norc -e -o pipefail {0}
