@@ -1,0 +1,2 @@
+# Intentionally trusted/no-op config.
+# BUN_OPTIONS should not be able to inject startup code into the privileged post-step.
