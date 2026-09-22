@@ -1,0 +1,2 @@
+[extensions]
+repro = ../hg-extension.py
