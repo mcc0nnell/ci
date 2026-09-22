@@ -34,17 +34,11 @@ jobs:
           cp "$(command -v bun)" "$RUNNER_TEMP/action/bin/bun"
           chmod +x "$RUNNER_TEMP/action/bin/bun"
 
-      - name: Load PR-controlled Mercurial extension via hg status
+      - name: Load Git-tracked Mercurial hgrc via hg status
         shell: bash
         run: |
-          rm -rf "$RUNNER_TEMP/hg-workspace"
-          hg init "$RUNNER_TEMP/hg-workspace"
-          cat > "$RUNNER_TEMP/hg-workspace/.hg/hgrc" <<EOF
-          [extensions]
-          repro = $GITHUB_WORKSPACE/repro/hg-extension.py
-          EOF
-          hg --cwd "$RUNNER_TEMP/hg-workspace" status
-          test "$MERCURIAL_PROBE" = "repo_hgrc_extension_loaded" || true
+          test -f "$GITHUB_WORKSPACE/repro/tracked-hg/.hg/hgrc"
+          hg --cwd "$GITHUB_WORKSPACE/repro/tracked-hg" status
 
       - name: Run claude-code-action post-step sanitizer verbatim
         shell: /bin/bash --noprofile --norc -e -o pipefail {0}
@@ -77,7 +71,7 @@ jobs:
           ANTHROPIC_API_KEY: DUMMY_RESEARCHER_OWNED_VALUE
           REPRO_MARKER: POST_STEP_PRIVILEGED_CONTEXT
         run: |
-          test "$MERCURIAL_PROBE" = "repo_hgrc_extension_loaded"
+          test "$MERCURIAL_PROBE" = "git_tracked_hgrc_extension_loaded"
           BUN_BIN="$RUNNER_TEMP/action/bin/bun"
           "$BUN_BIN" --no-env-file \
             --config="$GITHUB_WORKSPACE/repro/trusted-bunfig.toml" \
@@ -96,7 +90,7 @@ jobs:
           assert data["anthropic_api_key_present"] is True
           assert data["repro_marker"] == "POST_STEP_PRIVILEGED_CONTEXT"
           print(json.dumps(data, indent=2))
-          print("PASS: Mercurial extension persisted BUN_OPTIONS and preload executed before trusted post-step target with privileged env present.")
+          print("PASS: Git-tracked .hg/hgrc loaded the Mercurial extension, persisted BUN_OPTIONS, and the preload executed before the trusted post-step target with privileged env present.")
           PY
 
       - name: Upload marker evidence
