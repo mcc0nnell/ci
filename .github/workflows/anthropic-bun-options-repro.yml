@@ -71,7 +71,7 @@ jobs:
           ANTHROPIC_API_KEY: DUMMY_RESEARCHER_OWNED_VALUE
           REPRO_MARKER: POST_STEP_PRIVILEGED_CONTEXT
         run: |
-          test "$MERCURIAL_PROBE" = "git_tracked_hgrc_extension_loaded"
+          test "$MERCURIAL_PROBE" = "repo_hgrc_extension_loaded"
           BUN_BIN="$RUNNER_TEMP/action/bin/bun"
           "$BUN_BIN" --no-env-file \
             --config="$GITHUB_WORKSPACE/repro/trusted-bunfig.toml" \
