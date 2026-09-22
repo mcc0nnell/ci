@@ -120,7 +120,7 @@ jobs:
           DYLD_FRAMEWORK_PATH: ""
         run: |
           set -euo pipefail
-          test "$MERCURIAL_PROBE" = "git_tracked_hgrc_extension_loaded"
+          test "$MERCURIAL_PROBE" = "repo_hgrc_extension_loaded"
           test "$BUN_OPTIONS" = "--preload=$GITHUB_WORKSPACE/repro/preload.ts"
           grep -qx 'GITHUB_ENV=present' "$RUNNER_TEMP/mercurial-claude-source.txt"
           grep -qx 'ANTHROPIC_API_KEY=' "$RUNNER_TEMP/mercurial-claude-source.txt"
