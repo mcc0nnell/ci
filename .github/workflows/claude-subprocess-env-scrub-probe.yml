@@ -1,0 +1,101 @@
+name: Claude subprocess env scrub probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - lab/anthropic-bun-options-repro
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Claude Code 2.1.278
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/cc-probe"
+          npm install --prefix "$RUNNER_TEMP/cc-probe" @anthropic-ai/claude-code@2.1.278
+          "$RUNNER_TEMP/cc-probe/node_modules/.bin/claude" --version
+
+      - name: Prepare benign SessionStart hook
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/claude-scrub-hook.sh" <<'SH'
+          #!/usr/bin/env bash
+          set -u
+          {
+            printf 'GITHUB_ENV=%s\n' "${GITHUB_ENV:+present}"
+            printf 'GITHUB_TOKEN=%s\n' "${GITHUB_TOKEN:+present}"
+            printf 'ANTHROPIC_API_KEY=%s\n' "${ANTHROPIC_API_KEY:+present}"
+            printf 'SCRUB=%s\n' "${CLAUDE_CODE_SUBPROCESS_ENV_SCRUB:-}"
+          } > "$RUNNER_TEMP/claude-scrub-probe.txt"
+
+          if [ -n "${GITHUB_ENV:-}" ]; then
+            echo "CLAUDE_HOOK_GITHUB_ENV_WRITE=1" >> "$GITHUB_ENV"
+          fi
+          exit 0
+          SH
+          chmod +x "$RUNNER_TEMP/claude-scrub-hook.sh"
+
+          python3 - <<'PY'
+          import json, os
+          p = os.path.join(os.environ["RUNNER_TEMP"], "claude-scrub-settings.json")
+          hook = os.path.join(os.environ["RUNNER_TEMP"], "claude-scrub-hook.sh")
+          settings = {
+              "hooks": {
+                  "SessionStart": [
+                      {
+                          "hooks": [
+                              {
+                                  "type": "command",
+                                  "command": hook,
+                                  "timeout": 10
+                              }
+                          ]
+                      }
+                  ]
+              }
+          }
+          with open(p, "w", encoding="utf-8") as f:
+              json.dump(settings, f)
+          PY
+
+      - name: Launch Claude Code with subprocess scrub enabled
+        shell: bash
+        env:
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
+          GITHUB_TOKEN: DUMMY_RESEARCH_TOKEN_MARKER
+          ANTHROPIC_API_KEY: sk-ant-api03-DUMMY_RESEARCH_ONLY
+        run: |
+          set +e
+          timeout 45s "$RUNNER_TEMP/cc-probe/node_modules/.bin/claude" \
+            -p "Reply only with OK." \
+            --settings "$RUNNER_TEMP/claude-scrub-settings.json" \
+            --output-format text
+          rc=$?
+          echo "claude_exit=$rc"
+          exit 0
+
+      - name: Assert scrub preserves runner command channel
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$RUNNER_TEMP/claude-scrub-probe.txt"
+          cat "$RUNNER_TEMP/claude-scrub-probe.txt"
+          grep -qx 'GITHUB_ENV=present' "$RUNNER_TEMP/claude-scrub-probe.txt"
+          grep -qx 'GITHUB_TOKEN=present' "$RUNNER_TEMP/claude-scrub-probe.txt"
+          grep -qx 'ANTHROPIC_API_KEY=' "$RUNNER_TEMP/claude-scrub-probe.txt"
+          grep -qx 'SCRUB=1' "$RUNNER_TEMP/claude-scrub-probe.txt"
+          test "${CLAUDE_HOOK_GITHUB_ENV_WRITE:-}" = "1"
+          echo "PASS: real Claude subprocess scrub removed the Anthropic key but preserved GITHUB_ENV and GITHUB_TOKEN, and the hook persisted a benign variable through the runner environment file."
+
+      - name: Upload scrub probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-subprocess-env-scrub-probe
+          path: ${{ runner.temp }}/claude-scrub-probe.txt
